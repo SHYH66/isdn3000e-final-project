@@ -185,7 +185,63 @@ class StudentPlayerNode : public rclcpp::Node {
     //
     // The dummy return below keeps the starter code buildable, but it does not
     // solve IK. Students should replace it with a real implementation.
-    return std::nullopt;
+   
+    //以下todo代码
+
+ 
+
+    // 1
+    auto request = std::make_shared<moveit_msgs::srv::GetPositionIK::Request>();
+    request->ik_request.group_name = "panda_arm";          
+    request->ik_request.pose_stamped.header.frame_id = "panda_link0"; 
+    request->ik_request.pose_stamped.header.stamp = this->now();
+    request->ik_request.pose_stamped.pose = target_pose;      
+
+ 
+
+    // 2
+
+    request->ik_request.robot_state.joint_state.name = panda_joint_names();
+    request->ik_request.robot_state.joint_state.position = seed_positions;
+
+ 
+
+    // 
+
+    auto future = ik_client_->async_send_request(request);
+      if (future.wait_for(1s) != std::future_status::ready) {
+      RCLCPP_WARN(this->get_logger(), "IK request timed out.");
+      return std::nullopt;
+    }
+
+      auto response = future.get();
+      if (response->error_code.val != moveit_msgs::msg::MoveItErrorCodes::SUCCESS) {
+        RCLCPP_WARN(this->get_logger(), "IK failed with code %d", response->error_code.val);
+        return std::nullopt;
+
+
+      // 6      
+      const auto &solution = response->solution.joint_state;
+      std::vector<double> result;
+      result.reserve(panda_joint_names().size());
+      for (const auto &joint_name : panda_joint_names()) {
+        auto it = std::find(solution.name.begin(), solution.name.end(), joint_name);
+        if (it == solution.name.end()) {
+          RCLCPP_ERROR(this->get_logger(), "Joint %s missing in IK solution.", joint_name.c_str());
+          return std::nullopt;
+        }
+        size_t idx = std::distance(solution.name.begin(), it);
+        result.push_back(solution.position[idx]);
+      }
+      return result;
+
+      
+    } catch (const std::exception &e) {
+      RCLCPP_ERROR(this->get_logger(), "IK request exception: %s", e.what());
+      return std::nullopt;
+    }
+
+  //////////////以上todo代码
   }
 
   // ----------------------------------------------------------------
@@ -219,8 +275,81 @@ class StudentPlayerNode : public rclcpp::Node {
     // The fallback below intentionally rejects every turn. This keeps the
     // starter repository buildable while making it clear that students must
     // implement their own planner.
+    
+    //以下todo代码
+
+    // 1
+    if (request->snapshot.legal_actions.empty()) {
+      response->accepted = false;
+      response->message = "No legal actions available.";
+      return;
+    }
+    const auto &action = request->snapshot.legal_actions.front();
+    uint8_t piece_id = action.piece_id;
+    uint8_t cell_id = action.cell_id;
+
+ 
+
+    // 2
+    geometry_msgs::msg::Pose piece_pose = find_piece_pose(request->snapshot, piece_id);
+
+ 
+
+    // 
+    if (cell_id >= request->layout.cell_poses.size()) {
+      response->accepted = false;
+      response->message = "Invalid cell id.";
+      return;
+    }
+    const auto &cell_pose = request->layout.cell_poses[cell_id];
+
+ 
+
+    // 4
+    auto pick_pose = link8_pose_from_tcp_target(
+        piece_pose.position.x, piece_pose.position.y, piece_pose.position.z);
+    auto place_pose = link8_pose_from_tcp_target(
+        cell_pose.position.x, cell_pose.position.y, cell_pose.position.z);
+
+ 
+
+    // 5.
+    auto pick_joints = compute_ik(pick_pose, kHomePositions);
+    auto place_joints = compute_ik(place_pose, kHomePositions);
+    if (!pick_joints || !place_joints) {
+      response->accepted = false;
+      response->message = "IK failed for pick/place.";
+      return;
+    }
+
+ 
+
+    //
+
+    ttt_interfaces::msg::TurnPlan plan;
+    plan.home_to_pick = make_three_point_trajectory(kHomePositions, *pick_joints, 2.0);
+    plan.pick_to_home = make_three_point_trajectory(*pick_joints, kHomePositions, 2.0);
+    plan.home_to_place = make_three_point_trajectory(kHomePositions, *place_joints, 2.0);
+    plan.place_to_home = make_three_point_trajectory(*place_joints, kHomePositions, 2.0);
+
+
+    response->plan = plan;
+    response->accepted = true;
+    response->message = "Plan generated successfully.";
+ 
+
+  } catch (const std::exception &e) {
     response->accepted = false;
-    response->message = "TODO(student): implement handle_plan_turn().";
+    response->message = std::string("Exception in handle_plan_turn: ") + e.what();
+
+ 
+
+  ///以上todo代码
+
+    //response->accepted = false;
+    //response->message = "TODO(student): implement handle_plan_turn().";
+
+    //以上两行原有的
   }
 
   static geometry_msgs::msg::Pose find_piece_pose(
@@ -229,8 +358,27 @@ class StudentPlayerNode : public rclcpp::Node {
     // TODO(student): Search `snapshot.pieces` for the requested `piece_id` and
     // return its pose. You may choose to throw an exception or return a
     // fallback pose if the piece is missing.
-    (void)snapshot;
-    (void)piece_id;
+
+    //以下两行原有的占位
+
+    //(void)snapshot;
+    //(void)piece_id;
+
+ 
+
+  ///以下todo代码
+
+    for (const auto &piece : snapshot.pieces) {
+      if (piece.piece_id == piece_id) {
+        return piece.pose;
+      }
+    }
+
+
+    RCLCPP_WARN(rclcpp::get_logger("student_player"),
+                "Piece %u not found in snapshot, returning fallback pose.",  piece_id);
+
+  ///以上todo代码
 
     // Dummy fallback to keep the starter code compilable.
     geometry_msgs::msg::Pose fallback;
