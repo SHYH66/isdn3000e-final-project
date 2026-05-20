@@ -349,7 +349,7 @@ class StudentPlayerNode : public rclcpp::Node {
     //response->accepted = false;
     //response->message = "TODO(student): implement handle_plan_turn().";
 
-    //以上两行原有的
+    //以上两行事原有的
   }
 
   static geometry_msgs::msg::Pose find_piece_pose(
@@ -359,7 +359,7 @@ class StudentPlayerNode : public rclcpp::Node {
     // return its pose. You may choose to throw an exception or return a
     // fallback pose if the piece is missing.
 
-    //以下两行原有的占位
+    //以下两行实原有的占位
 
     //(void)snapshot;
     //(void)piece_id;
